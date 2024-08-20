@@ -4,9 +4,38 @@ using System.Runtime.InteropServices;
 
 namespace CSS_Cheat
 {
+    public class ModuleInfo
+    {
+        public string ModuleName { get; set; }
+        public IntPtr BaseAddress { get; set; }
+        public uint ModuleSize { get; set; }
+    }
+
+    public enum MemoryValueType
+    {
+        Int32,
+        Float,
+        Double,
+        Int64
+    }
+
+
     public static class Memory
     {
+
+
         // 定义所需的Windows API函数
+        private delegate bool ModuleCallback(string ModuleName, IntPtr ModuleBase, uint ModuleSize, IntPtr UserContext);
+
+        [DllImport("dbghelp.dll", CharSet = CharSet.Ansi)]
+        private static extern bool EnumerateLoadedModules(IntPtr hProcess, ModuleCallback EnumLoadedModulesCallback, IntPtr UserContext);
+
+        [DllImport("psapi.dll", SetLastError = true)]
+        private static extern bool EnumProcessModulesEx(IntPtr hProcess, [Out] IntPtr[] lphModule, uint cb, out uint lpcbNeeded, uint dwFilterFlag);
+
+        [DllImport("psapi.dll", CharSet = CharSet.Auto)]
+        private static extern uint GetModuleFileNameEx(IntPtr hProcess, IntPtr hModule, [Out] char[] lpBaseName, [In][MarshalAs(UnmanagedType.U4)] int nSize);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
 
@@ -22,6 +51,7 @@ namespace CSS_Cheat
         [DllImport("kernel32.dll")]
         private static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, int dwSize, out int lpNumberOfBytesRead);
 
+        private const uint LIST_MODULES_ALL = 0x03; // List all modules
         public const int PROCESS_VM_READ = 0x0010;
         public const int PROCESS_VM_OPERATION = 0x0008;
 
@@ -43,53 +73,100 @@ namespace CSS_Cheat
         }
 
         private const uint TH32CS_SNAPMODULE = 0x00000008;
-        private const uint TH32CS_SNAPMODULE32 = 0x00000008;
+        private const uint TH32CS_SNAPMODULE32 = 0x00000010;
 
         public static IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId)
         {
             return Process.GetProcessById(dwProcessId).Handle;
         }
 
-        public static IntPtr GetModuleHandle(uint processId, string moduleName)
+        public static IntPtr GetModuleHandle(IntPtr processHandle, uint processId, string moduleName)
         {
-            if (processId == 0)
-            {
-                return IntPtr.Zero;
-            }
+            List<ModuleInfo> modules = GetAllModules(processHandle, processId);
 
-            IntPtr hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
-            if (hSnapshot == IntPtr.Zero)
+            foreach (var module in modules)
             {
-                return IntPtr.Zero;
-            }
-
-            MODULEENTRY32 moduleEntry = new MODULEENTRY32();
-            moduleEntry.dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32));
-
-            if (Module32First(hSnapshot, ref moduleEntry))
-            {
-                do
+                if (module.ModuleName.Equals(moduleName, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (moduleEntry.szModule.IndexOf(moduleName, StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        CloseHandle(hSnapshot);
-                        return moduleEntry.modBaseAddr;  // 返回模块基地址
-                    }
+                    return module.BaseAddress;
                 }
-                while (Module32Next(hSnapshot, ref moduleEntry));
             }
 
-            CloseHandle(hSnapshot);
             return IntPtr.Zero;
         }
 
-        public static string ReadMemoryValue(IntPtr processHandle, IntPtr moduleBase, int offset)
+        public static List<ModuleInfo> GetAllModules(IntPtr processHandle, uint processId)
+        {
+            List<ModuleInfo> modules = new List<ModuleInfo>();
+  
+            // 使用 CreateToolhelp32Snapshot 获取常规模块信息
+            IntPtr hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE| TH32CS_SNAPMODULE32, processId);
+            if (hSnapshot != IntPtr.Zero)
+            {
+                MODULEENTRY32 moduleEntry = new MODULEENTRY32();
+                moduleEntry.dwSize = (uint)Marshal.SizeOf(typeof(MODULEENTRY32));
+
+                if (Module32First(hSnapshot, ref moduleEntry))
+                {
+                    do
+                    {
+                        modules.Add(new ModuleInfo
+                        {
+                            ModuleName = moduleEntry.szModule,
+                            BaseAddress = moduleEntry.modBaseAddr,
+                            ModuleSize = moduleEntry.modBaseSize
+                        });
+                    } while (Module32Next(hSnapshot, ref moduleEntry));
+                }
+
+                CloseHandle(hSnapshot);
+            }
+
+            // 使用 DbgHelp.dll 的 EnumerateLoadedModules 获取动态加载的模块信息
+            //EnumerateLoadedModules(processHandle, (moduleName, moduleBase, moduleSize, userContext) =>
+            //{
+            //    modules.Add(new ModuleInfo
+            //    {
+            //        ModuleName = moduleName,
+            //        BaseAddress = moduleBase,
+            //        ModuleSize = moduleSize
+            //    });
+            //    return true; // 继续枚举
+            //}, IntPtr.Zero);
+
+            return modules;
+        }
+        public static object ReadMemoryValue(IntPtr processHandle, IntPtr moduleBase, int offset, MemoryValueType valueType)
         {
             IntPtr address = moduleBase + offset;
-            byte[] buffer = new byte[4];
-            ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesRead);
-            int value = BitConverter.ToInt32(buffer, 0);
-            return value.ToString("X");
+            byte[] buffer;
+            object result = null;
+
+            switch (valueType)
+            {
+                case MemoryValueType.Int32:
+                    buffer = new byte[4];
+                    ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadInt32);
+                    result = BitConverter.ToInt32(buffer, 0);
+                    break;
+                case MemoryValueType.Float:
+                    buffer = new byte[4];
+                    ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadFloat);
+                    result = BitConverter.ToSingle(buffer, 0);
+                    break;
+                case MemoryValueType.Double:
+                    buffer = new byte[8];
+                    ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadDouble);
+                    result = BitConverter.ToDouble(buffer, 0);
+                    break;
+                case MemoryValueType.Int64:
+                    buffer = new byte[8];
+                    ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadInt64);
+                    result = BitConverter.ToInt64(buffer, 0);
+                    break;
+            }
+
+            return result;
         }
     }
 }

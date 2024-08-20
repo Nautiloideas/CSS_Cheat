@@ -11,12 +11,14 @@ namespace CSS_Cheat
         private IntPtr clientModuleBase;
         private IntPtr serverModuleBase;
         private OverlayWindow overlayWindow;
+        private ModuleListForm moduleListForm;
 
         public MainForm()
         {
             InitializeComponent();
             LoadProcesses();
             overlayWindow = new OverlayWindow();
+            moduleListForm = new ModuleListForm();
         }
 
         private void LoadProcesses()
@@ -48,17 +50,31 @@ namespace CSS_Cheat
                 return;
             }
 
+            // 清空之前的模块列表
+            moduleListForm.ClearModules();
+
             Process targetProcess = processes[0];
             this.processHandle = Memory.OpenProcess(Memory.PROCESS_VM_READ | Memory.PROCESS_VM_OPERATION, false, targetProcess.Id);
 
-            clientModuleBase = Memory.GetModuleHandle((uint)targetProcess.Id, "client.dll");
-            serverModuleBase = Memory.GetModuleHandle((uint)targetProcess.Id, "server.dll");
+            clientModuleBase = Memory.GetModuleHandle(processHandle,(uint)targetProcess.Id, "client.dll");
+            serverModuleBase = Memory.GetModuleHandle(processHandle,(uint)targetProcess.Id, "server.dll");
+
+
+            // 获取所有模块信息
+            List<ModuleInfo> modules = Memory.GetAllModules(this.processHandle, (uint)targetProcess.Id);
+
+            // 显示模块列表窗口，并加载模块列表
+            moduleListForm.LoadModules(modules);
+            moduleListForm.Location = new Point(this.Right, this.Top); // 紧靠在 MainForm 右侧
+            moduleListForm.Show();
         }
 
-      
+
+
         private void refreshProcessListButton_Click(object sender, EventArgs e)
         {
             LoadProcesses();
+            moduleListForm.Hide(); // 隐藏模块列表窗口
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
