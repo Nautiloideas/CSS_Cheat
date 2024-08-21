@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -19,11 +20,8 @@ namespace CSS_Cheat
         Int64
     }
 
-
     public static class Memory
     {
-
-
         // 定义所需的Windows API函数
         private delegate bool ModuleCallback(string ModuleName, IntPtr ModuleBase, uint ModuleSize, IntPtr UserContext);
 
@@ -50,6 +48,9 @@ namespace CSS_Cheat
 
         [DllImport("kernel32.dll")]
         private static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, int dwSize, out int lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll")]
+        public static extern uint GetLastError();
 
         private const uint LIST_MODULES_ALL = 0x03; // List all modules
         public const int PROCESS_VM_READ = 0x0010;
@@ -98,9 +99,9 @@ namespace CSS_Cheat
         public static List<ModuleInfo> GetAllModules(IntPtr processHandle, uint processId)
         {
             List<ModuleInfo> modules = new List<ModuleInfo>();
-  
+
             // 使用 CreateToolhelp32Snapshot 获取常规模块信息
-            IntPtr hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE| TH32CS_SNAPMODULE32, processId);
+            IntPtr hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
             if (hSnapshot != IntPtr.Zero)
             {
                 MODULEENTRY32 moduleEntry = new MODULEENTRY32();
@@ -122,22 +123,24 @@ namespace CSS_Cheat
                 CloseHandle(hSnapshot);
             }
 
-            // 使用 DbgHelp.dll 的 EnumerateLoadedModules 获取动态加载的模块信息
-            //EnumerateLoadedModules(processHandle, (moduleName, moduleBase, moduleSize, userContext) =>
-            //{
-            //    modules.Add(new ModuleInfo
-            //    {
-            //        ModuleName = moduleName,
-            //        BaseAddress = moduleBase,
-            //        ModuleSize = moduleSize
-            //    });
-            //    return true; // 继续枚举
-            //}, IntPtr.Zero);
-
             return modules;
         }
+
+        public static (IntPtr clientModuleBase, IntPtr serverModuleBase) GetModuleBases(IntPtr processHandle, uint processId)
+        {
+            IntPtr clientModuleBase = GetModuleHandle(processHandle, processId, "client.dll");
+            IntPtr serverModuleBase = GetModuleHandle(processHandle, processId, "server.dll");
+            return (clientModuleBase, serverModuleBase);
+        }
+
         public static object ReadMemoryValue(IntPtr processHandle, IntPtr moduleBase, int offset, MemoryValueType valueType)
         {
+            if (processHandle == IntPtr.Zero)
+            {
+                Debug.WriteLine("Invalid process handle.");
+                return null;
+            }
+
             IntPtr address = moduleBase + offset;
             byte[] buffer;
             object result = null;
@@ -146,23 +149,51 @@ namespace CSS_Cheat
             {
                 case MemoryValueType.Int32:
                     buffer = new byte[4];
-                    ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadInt32);
-                    result = BitConverter.ToInt32(buffer, 0);
+                    if (ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadInt32))
+                    {
+                        result = BitConverter.ToInt32(buffer, 0);
+                    }
+                    else
+                    {
+                        uint errorCode = GetLastError();
+                        Debug.WriteLine($"ReadProcessMemory failed with error code: {errorCode}");
+                    }
                     break;
                 case MemoryValueType.Float:
                     buffer = new byte[4];
-                    ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadFloat);
-                    result = BitConverter.ToSingle(buffer, 0);
+                    if (ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadFloat))
+                    {
+                        result = BitConverter.ToSingle(buffer, 0);
+                    }
+                    else
+                    {
+                        uint errorCode = GetLastError();
+                        Debug.WriteLine($"ReadProcessMemory failed with error code: {errorCode}");
+                    }
                     break;
                 case MemoryValueType.Double:
                     buffer = new byte[8];
-                    ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadDouble);
-                    result = BitConverter.ToDouble(buffer, 0);
+                    if (ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadDouble))
+                    {
+                        result = BitConverter.ToDouble(buffer, 0);
+                    }
+                    else
+                    {
+                        uint errorCode = GetLastError();
+                        Debug.WriteLine($"ReadProcessMemory failed with error code: {errorCode}");
+                    }
                     break;
                 case MemoryValueType.Int64:
                     buffer = new byte[8];
-                    ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadInt64);
-                    result = BitConverter.ToInt64(buffer, 0);
+                    if (ReadProcessMemory(processHandle, address, buffer, buffer.Length, out int bytesReadInt64))
+                    {
+                        result = BitConverter.ToInt64(buffer, 0);
+                    }
+                    else
+                    {
+                        uint errorCode = GetLastError();
+                        Debug.WriteLine($"ReadProcessMemory failed with error code: {errorCode}");
+                    }
                     break;
             }
 

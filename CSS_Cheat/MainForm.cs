@@ -19,6 +19,7 @@ namespace CSS_Cheat
             LoadProcesses();
             overlayWindow = new OverlayWindow();
             moduleListForm = new ModuleListForm();
+            moduleListForm.Location = new Point(this.Right, this.Top); // 紧靠在 MainForm 右侧
         }
 
         private void LoadProcesses()
@@ -56,16 +57,14 @@ namespace CSS_Cheat
             Process targetProcess = processes[0];
             this.processHandle = Memory.OpenProcess(Memory.PROCESS_VM_READ | Memory.PROCESS_VM_OPERATION, false, targetProcess.Id);
 
-            clientModuleBase = Memory.GetModuleHandle(processHandle,(uint)targetProcess.Id, "client.dll");
-            serverModuleBase = Memory.GetModuleHandle(processHandle,(uint)targetProcess.Id, "server.dll");
-
+            // 获取模块基地址
+            (clientModuleBase, serverModuleBase) = Memory.GetModuleBases(processHandle, (uint)targetProcess.Id);
 
             // 获取所有模块信息
             List<ModuleInfo> modules = Memory.GetAllModules(this.processHandle, (uint)targetProcess.Id);
 
             // 显示模块列表窗口，并加载模块列表
             moduleListForm.LoadModules(modules);
-            moduleListForm.Location = new Point(this.Right, this.Top); // 紧靠在 MainForm 右侧
             moduleListForm.Show();
         }
 
@@ -96,8 +95,8 @@ namespace CSS_Cheat
                     Process targetProcess = processes[0]; 
                     uint targetProcessId = (uint)targetProcess.Id;
 
-                    // 调用 StartOverlay，并传递进程ID、窗口标题和其他参数
-                    overlayWindow.StartOverlay(targetProcessId, targetProcess.MainWindowTitle, this.processHandle, this.clientModuleBase, this.serverModuleBase);
+                    // 调用 StartOverlay，并仅传递进程ID
+                    overlayWindow.StartOverlay(targetProcessId);
                 }
                 else
                 {
