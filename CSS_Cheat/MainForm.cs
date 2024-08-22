@@ -8,8 +8,6 @@ namespace CSS_Cheat
     public partial class MainForm : Form
     {
         private IntPtr processHandle;
-        private IntPtr clientModuleBase;
-        private IntPtr serverModuleBase;
         private OverlayWindow overlayWindow;
         private ModuleListForm moduleListForm;
 
@@ -18,8 +16,8 @@ namespace CSS_Cheat
             InitializeComponent();
             LoadProcesses();
             overlayWindow = new OverlayWindow();
-            moduleListForm = new ModuleListForm();
-            moduleListForm.Location = new Point(this.Right, this.Top); // 紧靠在 MainForm 右侧
+            //moduleListForm = new ModuleListForm();
+            //moduleListForm.Location = new Point(this.Right, this.Top); // 紧靠在 MainForm 右侧
         }
 
         private void LoadProcesses()
@@ -36,7 +34,7 @@ namespace CSS_Cheat
 
         private void selectProcessButton_Click(object sender, EventArgs e)
         {
-            string selectedProcessName = processListBox.SelectedItem?.ToString();
+            string selectedProcessName = processListBox.SelectedItem?.ToString()!;
 
             if (string.IsNullOrEmpty(selectedProcessName))
             {
@@ -52,20 +50,17 @@ namespace CSS_Cheat
             }
 
             // 清空之前的模块列表
-            moduleListForm.ClearModules();
+            //moduleListForm.ClearModules();
 
             Process targetProcess = processes[0];
-            this.processHandle = Memory.OpenProcess(Memory.PROCESS_VM_READ | Memory.PROCESS_VM_OPERATION, false, targetProcess.Id);
-
-            // 获取模块基地址
-            (clientModuleBase, serverModuleBase) = Memory.GetModuleBases(processHandle, (uint)targetProcess.Id);
+            this.processHandle = Memory.GetProcessHandle(targetProcess.Id);
 
             // 获取所有模块信息
-            List<ModuleInfo> modules = Memory.GetAllModules(this.processHandle, (uint)targetProcess.Id);
+            //List<ModuleInfo> modules = Memory.GetAllModules(this.processHandle, (uint)targetProcess.Id);
 
-            // 显示模块列表窗口，并加载模块列表
-            moduleListForm.LoadModules(modules);
-            moduleListForm.Show();
+            //// 显示模块列表窗口，并加载模块列表
+            //moduleListForm.LoadModules(modules);
+            //moduleListForm.Show();
         }
 
 
@@ -86,7 +81,7 @@ namespace CSS_Cheat
 
         private void btnStartDrawing_Click(object sender, EventArgs e)
         {
-            string selectedProcessName = processListBox.SelectedItem?.ToString();
+            string selectedProcessName = processListBox.SelectedItem?.ToString()!;
             if (!string.IsNullOrEmpty(selectedProcessName))
             {
                 Process[] processes = Process.GetProcessesByName(selectedProcessName);
@@ -96,7 +91,7 @@ namespace CSS_Cheat
                     uint targetProcessId = (uint)targetProcess.Id;
 
                     // 调用 StartOverlay，并仅传递进程ID
-                    overlayWindow.StartOverlay(targetProcessId);
+                    overlayWindow.StartOverlay(targetProcessId); 
                 }
                 else
                 {

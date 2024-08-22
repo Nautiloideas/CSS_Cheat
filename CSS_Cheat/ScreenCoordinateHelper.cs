@@ -60,13 +60,19 @@ namespace CSS_Cheat
             if (angleX - mouseAngleX > 180) horizontalAngle = 360 - angleX + mouseAngleX;
             if (mouseAngleX - angleX > 180) horizontalAngle = (360 + angleX - mouseAngleX) * -1;
 
+            // 检查敌人是否在背面
+            if (horizontalAngle > 90 || horizontalAngle < -90)
+            {
+                return new Vector2(-1, -1); // 返回标志位
+            }
+
             // 转换坐标
             float opposite = (float)(Math.Sin(horizontalAngle * Math.PI / 180) * distance2D);
             float adjacent = (float)(Math.Cos(horizontalAngle * Math.PI / 180) * distance2D);
 
             float ratio = distance3D / 500;
             float screenX = (screenWidth / 2) - 0 / ratio + opposite / adjacent * (screenWidth / 2);
-            float oppositeY = (float)(Math.Tan(mouseAngleY * Math.PI / 180) * distance2D + deltaZ +40 );
+            float oppositeY = (float)(Math.Tan(mouseAngleY * Math.PI / 180) * distance2D + deltaZ + 40);
             float screenY = (screenHeight / 2) + oppositeY / distance2D * (screenHeight / 2);
 
             return new Vector2(screenX, screenY);

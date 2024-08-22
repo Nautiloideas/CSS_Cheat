@@ -153,7 +153,7 @@ namespace CSS_Cheat
                 return;
             }
             this.processId = targetProcessId;
-            this.processHandle = Memory.OpenProcess(Memory.PROCESS_VM_READ | Memory.PROCESS_VM_OPERATION, false, targetProcess.Id);
+            this.processHandle = Memory.GetProcessHandle(targetProcess.Id);
 
             // 获取模块基地址
             (clientModuleBase, serverModuleBase) = Memory.GetModuleBases(processHandle, (uint)targetProcess.Id);
@@ -192,17 +192,12 @@ namespace CSS_Cheat
 
         private PlayerData GetPlayerData()
         {
-
-            // 打开进程句柄
-            IntPtr processHandle = Memory.OpenProcess(Memory.PROCESS_VM_READ | Memory.PROCESS_VM_OPERATION, false, (int)this.processId);
             if (processHandle == IntPtr.Zero)
             {
                 MessageBox.Show("无法打开进程！");
                 return new PlayerData(); // 返回空的 PlayerData 对象
             }
 
-            // 获取模块基地址
-            (IntPtr clientModuleBase, IntPtr serverModuleBase) = Memory.GetModuleBases(processHandle, this.processId);
             if (clientModuleBase == IntPtr.Zero || serverModuleBase == IntPtr.Zero)
             {
                 MessageBox.Show("无法获取模块基地址！");
@@ -221,9 +216,11 @@ namespace CSS_Cheat
                 playerData.PlayerHealth = GetPlayerHealth();
                 playerData.Enemies = new List<EnemyData>();
             }
-            catch (Exception ex)
+            catch (NullReferenceException ex)
             {
-                Debug.WriteLine($"An error occurred: {ex.Message}");
+                Debug.WriteLine("NullReferenceException caught:");
+                Debug.WriteLine($"Message: {ex.Message}");
+                Debug.WriteLine($"StackTrace: {ex.StackTrace}");
                 if (processHandle == IntPtr.Zero)
                 {
                     Debug.WriteLine("processHandle is null.");
@@ -232,7 +229,7 @@ namespace CSS_Cheat
                 {
                     Debug.WriteLine("clientModuleBase is null.");
                 }
-                // Add more checks if necessary
+                throw; // 重新抛出异常以便进一步处理
             }
 
             int playerCount = (int)Memory.ReadMemoryValue(processHandle, serverModuleBase, 0x5119C4, MemoryValueType.Int32);
@@ -341,17 +338,15 @@ namespace CSS_Cheat
                     Math.Pow(enemy.EnemyPosZ - playerData.PlayerPosZ, 2)
                 );
                 // 绘制从敌人位置
-                DrawEnemy(g,screenPos,playerPos,enemyDistance,enemy.EnemyHealth, playerData.FOV);
+                if(IsEnemyInView(screenPos))
+                {
+                    DrawEnemy(g,screenPos,playerPos,enemyDistance,enemy.EnemyHealth, playerData.FOV,i);
+                }
             }
         }
 
-        private void DrawEnemy(Graphics g, ScreenCoordinateHelper.Vector2 screenPos, ScreenCoordinateHelper.Vector3 playerPos, float enemyDistance, float enemyHealth, float viewAngle)
+        private void DrawEnemy(Graphics g, ScreenCoordinateHelper.Vector2 screenPos, ScreenCoordinateHelper.Vector3 playerPos, float enemyDistance, float enemyHealth, float viewAngle,int enemyIndex)
         {
-            // 检查敌人是否在视野范围内
-            if (!IsEnemyInView(screenPos, playerPos, viewAngle))
-            {
-                return;
-            }
 
             // 绘制从玩家位置到敌人位置的线段
             DrawLineToEnemy(g, screenPos);
@@ -359,7 +354,7 @@ namespace CSS_Cheat
             // 如果距离小于等于 600，绘制敌人方框
             if (enemyDistance <= 600)
             {
-                DrawEnemyBox(g, screenPos, enemyDistance, enemyHealth);
+                DrawEnemyBox(g, screenPos, enemyDistance, enemyHealth, enemyIndex);
             }
             else
             {
@@ -369,7 +364,7 @@ namespace CSS_Cheat
         }
 
         
-        private void DrawEnemyBox(Graphics g, ScreenCoordinateHelper.Vector2 screenPos, float enemyDistance, float enemyHealth)
+        private void DrawEnemyBox(Graphics g, ScreenCoordinateHelper.Vector2 screenPos, float enemyDistance, float enemyHealth, int enemyIndex)
         {
             // 计算方框的宽度和高度
             double[] distances = new double[] { 200, 300, 400, 500, 600 };
@@ -418,6 +413,7 @@ namespace CSS_Cheat
             // 绘制方框大小文本
             g.DrawString($"高度: {Math.Round(height)}", new Font("Arial", 12), Brushes.Red, screenPos.X, screenPos.Y - (float)height / 2 - 60);
             g.DrawString($"宽度: {Math.Round(width)}", new Font("Arial", 12), Brushes.Red, screenPos.X, screenPos.Y - (float)height / 2 - 80);
+            g.DrawString($"第{enemyIndex}号", new Font("Arial", 12), Brushes.Yellow, screenPos.X, screenPos.Y - (float)height / 2 - 100);
         }
         private void DrawEnemyPoint(Graphics g, ScreenCoordinateHelper.Vector2 screenPos)
         {
@@ -444,23 +440,17 @@ namespace CSS_Cheat
             }
         }
 
-        private bool IsEnemyInView(ScreenCoordinateHelper.Vector2 screenPos, ScreenCoordinateHelper.Vector3 playerPos, float viewAngle)
+       private bool IsEnemyInView(ScreenCoordinateHelper.Vector2 screenPos)
         {
-            // 计算敌人相对于玩家的方向向量
-            var directionToEnemy = new ScreenCoordinateHelper.Vector2(screenPos.X - playerPos.X, screenPos.Y - playerPos.Y);
-            directionToEnemy = Normalize(directionToEnemy);
+            // 检查敌人是否在背面
+            if (screenPos.X == -1 && screenPos.Y == -1)
+            {
+                return false; // 敌人在背面
+            }
 
-            // 计算玩家的视野方向向量
-            var playerViewDirection = new ScreenCoordinateHelper.Vector2((float)Math.Cos(viewAngle), (float)Math.Sin(viewAngle));
-            playerViewDirection = Normalize(playerViewDirection);
-
-            // 计算方向向量之间的夹角
-            float dotProduct = directionToEnemy.X * playerViewDirection.X + directionToEnemy.Y * playerViewDirection.Y;
-            float angleBetween = (float)Math.Acos(dotProduct);
-
-            // 检查敌人是否在视野范围内
-            return angleBetween <= viewAngle / 2;
+            return true; // 敌人在视野内
         }
+
         private ScreenCoordinateHelper.Vector2 Normalize(ScreenCoordinateHelper.Vector2 vector)
         {
             float length = (float)Math.Sqrt(vector.X * vector.X + vector.Y * vector.Y);

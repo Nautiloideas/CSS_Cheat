@@ -25,6 +25,9 @@ namespace CSS_Cheat
         // 定义所需的Windows API函数
         private delegate bool ModuleCallback(string ModuleName, IntPtr ModuleBase, uint ModuleSize, IntPtr UserContext);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+
         [DllImport("dbghelp.dll", CharSet = CharSet.Ansi)]
         private static extern bool EnumerateLoadedModules(IntPtr hProcess, ModuleCallback EnumLoadedModulesCallback, IntPtr UserContext);
 
@@ -53,8 +56,9 @@ namespace CSS_Cheat
         public static extern uint GetLastError();
 
         private const uint LIST_MODULES_ALL = 0x03; // List all modules
-        public const int PROCESS_VM_READ = 0x0010;
-        public const int PROCESS_VM_OPERATION = 0x0008;
+        public const uint PROCESS_VM_READ = 0x0010;
+        private const uint PROCESS_VM_WRITE = 0x0020;
+        public const uint PROCESS_VM_OPERATION = 0x0008;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         private struct MODULEENTRY32
@@ -76,10 +80,15 @@ namespace CSS_Cheat
         private const uint TH32CS_SNAPMODULE = 0x00000008;
         private const uint TH32CS_SNAPMODULE32 = 0x00000010;
 
-        public static IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId)
+        //public static IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId)
+        //{
+        //    return Process.GetProcessById(dwProcessId).Handle;
+        //}
+        public static IntPtr GetProcessHandle(int processId)
         {
-            return Process.GetProcessById(dwProcessId).Handle;
+            return OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION, false, processId);
         }
+
 
         public static IntPtr GetModuleHandle(IntPtr processHandle, uint processId, string moduleName)
         {
